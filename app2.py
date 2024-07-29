@@ -11,8 +11,8 @@ import torch
 from src.config import KatzBotConfig  # Import the configuration class
 
 from langchain_groq import ChatGroq
-from langchain_openai import OpenAIEmbeddings
-from langchain_community.embeddings import OllamaEmbeddings
+# from langchain_openai import OpenAIEmbeddings
+# from langchain_community.embeddings import OllamaEmbeddings
 from langchain.text_splitter import RecursiveCharacterTextSplitter
 from langchain.chains.combine_documents import create_stuff_documents_chain
 from langchain_core.prompts import ChatPromptTemplate
@@ -20,7 +20,15 @@ from langchain.chains import create_retrieval_chain
 from langchain_community.vectorstores import FAISS
 from langchain_community.document_loaders import PyPDFDirectoryLoader
 from langchain_huggingface import HuggingFaceEmbeddings
+import langchain.globals as lc_globals
 
+import warnings
+
+# Suppress specific warning messages
+warnings.filterwarnings("ignore")
+
+# Set verbosity
+lc_globals.set_verbose(True)
 
 @dataclass
 class Message:
@@ -33,7 +41,6 @@ class Message:
     """
     origin: Literal["human", "ai"]
     message: str
-
 
 class KatzBotApp:
     """
@@ -58,12 +65,12 @@ class KatzBotApp:
             """
             Please answer the question using the provided context, link, and much like anything which seems best for it, 
             ensuring the response is at least three sentences long and concise.
-            If you cannot find a satisfactory answer in the context, conduct a Google search and provide the most precise information available.
+            If you cannot find a satisfactory answer in the context, other sources can be used to provide the most precise information available.
 
             <context>
             {context}
             <context>
-            Question:{input}
+            Question: {input}
             """
         )
 
@@ -112,9 +119,6 @@ class KatzBotApp:
 
             st.session_state.user_input = ""
 
-
-
-
 # Initialize the configuration
 config = KatzBotConfig()
 app = KatzBotApp(config)
@@ -122,11 +126,13 @@ app = KatzBotApp(config)
 # Check if CUDA is available and set device
 device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 
+
 # Load the GROQ API Key
 os.environ['GROQ_API_KEY'] = config.GROQ_API_KEY
 
 # If you do not have OpenAI key use the below Huggingface embedding
 os.environ['HUGGINGFACE_TOKEN'] = config.HUGGINGFACE_TOKEN
+
 
 # Initialize the vector embedding once when the script runs
 if "vectors" not in st.session_state:
@@ -157,7 +163,7 @@ with st.container():
         <div class="chat-row 
             {'' if chat.origin == 'ai' else 'row-reverse'}">
             <img class="chat-icon" src="data:image/png;base64,{image_base64}"
-                 width=32 height=32>
+                width=32 height=32>
             <div class="chat-bubble
             {'ai-bubble' if chat.origin == 'ai' else 'human-bubble'}">
                 &#8203;{chat.message}
@@ -178,13 +184,14 @@ st.markdown('</div>', unsafe_allow_html=True)  # Close fixed-input-container div
 for _ in range(3):
     st.markdown("")
 
-existing_df = pd.DataFrame()
-
-# Read existing chat history CSV file if it exists
-try:
-    existing_df = pd.read_csv(config.CHAT_HISTORY_FILE)
-except FileNotFoundError:
-    pass
+# Read existing chat history CSV file if it exists and is not empty
+if os.path.isfile(config.CHAT_HISTORY_FILE) and os.path.getsize(config.CHAT_HISTORY_FILE) > 0:
+    try:
+        existing_df = pd.read_csv(config.CHAT_HISTORY_FILE)
+    except pd.errors.EmptyDataError:
+        existing_df = pd.DataFrame()
+else:
+    existing_df = pd.DataFrame()
 
 # Concatenate existing chat history with current session state chat history
 new_df = pd.concat([existing_df, pd.DataFrame(st.session_state.history)])
